@@ -102,23 +102,22 @@ cp .env.example .env            # then edit .env and add your GROQ_API_KEY
 
 ### Ingest the corpus
 
-`
+```
 bash
 python ingest.py --urls \
   <https://fastapi.tiangolo.com/tutorial/path-params/> \
   <https://fastapi.tiangolo.com/tutorial/dependencies/> \
   <https://fastapi.tiangolo.com/tutorial/query-params-str-validations/>
-`
+```
 
 This indexes the 3 local files in 'data/corpus/' plus the 3 fetched URLs -
-6 documents total. Add '--clear' to wipe and rebuild the vector store, or
-'--skip-local' to index only URLs.
+6 documents total. Add '--clear' to wipe and rebuild the vector store, or '--skip-local' to index only URLs.
 
 ### Run the API
 
-'''bash
+```bash
 uvicorn app.main:app --reload
-'''
+```
 
 API docs available at <http://localhost:8000/docs>.
 
@@ -126,13 +125,13 @@ API docs available at <http://localhost:8000/docs>.
 
 ### 'POST /query'
 
-'''bash
+```bash
 curl -X POST <http://localhost:8000/query> \
   -H "Content-Type: application/json" \
   -d '{"question": "How do I add a path parameter with type validation?"}'
-'''
+```
 
-'''json
+```json
 {
   "answer": "To add a path parameter with type validation, you can use the 'Path()' function from FastAPI and pass the desired validation keyword arguments.\n\nFor example, you can use 'gt', 'ge', 'lt', 'le' for numeric constraints [2], 'min_length', 'max_length' for string length constraints [2], or 'pattern' for a regex the string value must match [2].\n\nHowever, the context does not provide a specific example of how to use these validation keyword arguments with 'Path()'. It only lists the available validation keyword arguments [2].\n\nTo provide a complete answer, information on how to use these validation keyword arguments with 'Path()' is missing.",
   "sources": [
@@ -143,82 +142,78 @@ curl -X POST <http://localhost:8000/query> \
   "is_fallback": false,
   "retries_used": 0
 }
-'''
+```
 
-(Captured verbatim from a real request against the local corpus alone -
-note it honestly flags that the exact 'Path()' syntax isn't spelled out in
-the retrieved context, rather than guessing at it.)
+(Captured verbatim from a real request against the local corpus alone.
+Note: It honestly flags that the exact 'Path()' syntax isn't spelled out in the retrieved context, rather than guessing at it.)
 
 ### Query that should trigger the fallback path
 
-'''bash
+```bash
 curl -X POST <http://localhost:8000/query> \
   -H "Content-Type: application/json" \
   -d '{"question": "How do I configure WebSocket authentication in FastAPI?"}'
-'''
+```
 
-'''json
+```json
 {
   "answer": "I couldn't find any relevant information in the documentation to provide a specific answer on configuring WebSocket authentication in FastAPI. It's possible that the details might be available in the source documentation or in more specialized resources.\n\nTo find the most accurate and up-to-date information, I recommend checking the official FastAPI documentation or related resources directly. You might also consider rephrasing your question or looking into community forums and discussions related to FastAPI, as these can often provide insights and solutions from experienced users and developers.",
   "sources": [],
   "is_fallback": true,
   "retries_used": 2
 }
-'''
+```
 
-(The corpus deliberately doesn't cover WebSockets - this is a documented
-negative-case test; see Section 8. Also captured verbatim from a real
+(The corpus deliberately doesn't cover WebSockets - this is a documented negative-case test; see Section 8. Also captured verbatim from a real
 request.)
 
 ### 'POST /ingest/urls'
 
-'''bash
+```bash
 curl -X POST http://localhost:8000/ingest/urls \
   -H "Content-Type: application/json" \
   -d '{"urls": ["https://fastapi.tiangolo.com/tutorial/first-steps/"]}'
-'''
+```
 
-'''json
+```json
 { "status": "success", "chunks_added": 48 }
-'''
+```
 
-(Chunk count depends on the live page's current length - 48 was accurate
-against the tutorial page's actual content at time of writing.)
+(Chunk count depends on the live page's current length - 48 was accurate against the tutorial page's actual content at time of writing.)
 
 ### 'POST /ingest/files'
 
-'''bash
+```bash
 curl -X POST http://localhost:8000/ingest/files \
   -F "files=@my_notes.md"
-'''
+```
 
 ### 'GET /documents'
 
-'''json
+```json
 [
   { "filename": "api_reference.md", "chunk_count": 8 },
   { "filename": "quickstart.md", "chunk_count": 4 },
   { "filename": "troubleshooting.md", "chunk_count": 4 }
 ]
-'''
+```
 
 ### 'POST /feedback'
 
-'''bash
+```bash
 curl -X POST http://localhost:8000/feedback \
   -H "Content-Type: application/json" \
   -d '{"question": "How do I add a path parameter?", "answer": "...", "rating": "up"}'
-'''
+```
 
-'''json
+```json
 { "status": "recorded" }
-'''
+```
 
 ## 6. Chunking & Embedding Strategy
 
 - **Splitter**: 'RecursiveCharacterTextSplitter.from_tiktoken_encoder', with a
-  separator priority of markdown headers → paragraphs → lines → sentences →
-  words. Token-based sizing (300 tokens, 50 overlap) rather than raw
+  separator priority of markdown headers -> paragraphs -> lines -> sentences -> words. Token-based sizing (300 tokens, 50 overlap) rather than raw
   character count, since token count is what actually governs embedding
   input limits and LLM context budget - a character-based split can
   silently produce wildly different token counts depending on content
@@ -281,7 +276,7 @@ naturally, rather than returning a generic canned message.
 
 **Prompt-injection guard on grading and generation prompts.** Both prompts
 explicitly instruct the model to treat retrieved content as data, not
-instructions, and wrap chunks in `&lt;context&gt;` tags. This is a mitigation, not
+instructions, and wrap chunks in 'context' tags. This is a mitigation, not
 a hard guarantee - a sufficiently adversarial chunk could still partially
 influence output. For a corpus of trusted official docs the risk is low, but
 this matters more once '/ingest' accepts arbitrary user-submitted URLs/files.
@@ -360,9 +355,9 @@ the primary fix.
 
 Run the full suite with:
 
-'''bash
+```bash
 pytest -v
-'''
+```
 
 Each test file targets a different layer, at the appropriate level of
 mocking for what it's actually verifying:
