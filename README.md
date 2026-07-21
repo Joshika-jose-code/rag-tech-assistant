@@ -23,34 +23,19 @@ The system ingests a mixed corpus of local Markdown files and fetched official d
 
 ## 2. Architecture
 
-'''
-                          |------------------|
-                          │  query_analysis  │   rewrite + classify query
-                          |------------------|
-                                   │
-                     |-------------------------|
-              ┌────> |        retrieve         |  vector similarity search
-              │      |-------------------------|
-              │                   │
-              │      ┌────────────────────────┐
-              │      │    grade_documents      │  LLM grades each chunk
-              │      └────────────┬────────────┘
-              │                   │
-              │        (conditional edge: decide_next_step)
-              │                   │
-              │     ┌─────────────┼──────────────┐
-              │     ▼             ▼              ▼
-              │  relevant    no match,       no match,
-              │  docs found  retries left    retries exhausted
-              │     │             │              │
-              │     ▼             ▼              ▼
-              │  generate   transform_query  generate_fallback
-              │     │             │              │
-              └─────┴─────────────┘              │
-                     │                            │
-                     ▼                            ▼
-                    END                          END
-'''
+```mermaid
+flowchart TD
+    Start([Incoming question]) --> QA[query_analysis<br/>rewrite + classify query]
+    QA --> Retrieve[retrieve<br/>vector similarity search]
+    Retrieve --> Grade[grade_documents<br/>LLM grades each chunk]
+    Grade --> Decide{decide_next_step}
+    Decide -->|relevant docs found| Generate[generate]
+    Decide -->|no match, retries left| Transform[transform_query]
+    Decide -->|no match, retries exhausted| Fallback[generate_fallback]
+    Transform --> Retrieve
+    Generate --> End([END])
+    Fallback --> End
+```
 
 **State schema** ('app/graph/state.py') tracks: the original question
 (never mutated) separately from the current query (mutated on retry),
