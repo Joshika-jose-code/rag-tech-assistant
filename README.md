@@ -90,23 +90,25 @@ flowchart TD
 
 ### Install
 
-'''bash
+`
+bash
 git clone <https://github.com/Joshika-jose-code/rag-tech-assistant.git>
 cd rag-tech-assistant
 python -m venv venv
 source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env            # then edit .env and add your GROQ_API_KEY
-'''
+`
 
 ### Ingest the corpus
 
-'''bash
+`
+bash
 python ingest.py --urls \
   <https://fastapi.tiangolo.com/tutorial/path-params/> \
   <https://fastapi.tiangolo.com/tutorial/dependencies/> \
   <https://fastapi.tiangolo.com/tutorial/query-params-str-validations/>
-'''
+`
 
 This indexes the 3 local files in 'data/corpus/' plus the 3 fetched URLs -
 6 documents total. Add '--clear' to wipe and rebuild the vector store, or
