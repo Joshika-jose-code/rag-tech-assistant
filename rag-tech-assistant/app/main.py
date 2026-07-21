@@ -50,8 +50,6 @@ async def query(request: QueryRequest):
 
 @app.post("/ingest/files")
 async def ingest_files(files: list[UploadFile] = File(...)):
-    if not files:
-        raise HTTPException(status_code=400, detail="No files provided")
     try:
         added = await load_and_index_files(files)
         return {"status": "success", "chunks_added": added}
