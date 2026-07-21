@@ -1,12 +1,12 @@
 # app/ingestion/embed_store.py
 from langchain_chroma import Chroma
-from langchain_openai import OpenAIEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_core.documents import Document
 
 PERSIST_DIR = "vectorstore"
 COLLECTION_NAME = "tech_docs"
 
-_embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
+_embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
 _vectorstore = Chroma(
     collection_name=COLLECTION_NAME,

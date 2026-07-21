@@ -36,7 +36,7 @@ def _get_splitter():
         )
     except Exception as e:
         logger.warning(
-            "Falling back to character-based splitting — could not load "
+            "Falling back to character-based splitting - could not load "
             "tiktoken encoder (%s). Chunk sizes will be approximate rather "
             "than exact token counts.", e
         )

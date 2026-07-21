@@ -7,12 +7,14 @@ python-multipart==0.0.9        # required for FastAPI UploadFile support
 langgraph==0.2.34
 langchain==0.3.1
 langchain-core==0.3.6
-langchain-openai==0.2.1
+langchain-groq==0.2.0
+langchain-huggingface==0.1.0
 langchain-chroma==0.1.4
 langchain-text-splitters==0.3.0
 
 # --- Vector store / embeddings ---
-chromadb==0.5.5
+chromadb==0.5.23
+sentence-transformers==3.1.1   # local embedding model, no API key needed
 tiktoken==0.7.0                # token-based chunking (from_tiktoken_encoder)
 
 # --- Document loading / parsing ---
@@ -26,8 +28,8 @@ pydantic==2.9.2
 # --- Environment management ---
 python-dotenv==1.0.1
 
-# --- Optional: bonus features (uncomment if implemented) ---
-# tavily-python==0.5.0          # web search fallback
+# --- Bonus features ---
+tavily-python==0.5.0            # web search fallback
 # streamlit==1.38.0             # simple UI
 
 # --- Testing ---

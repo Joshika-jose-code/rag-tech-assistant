@@ -1,4 +1,4 @@
-# app/graph/state.py
+
 from typing import TypedDict, List, Optional
 from langchain_core.documents import Document
 

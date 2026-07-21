@@ -101,10 +101,6 @@ def main():
     parser.add_argument("--clear", action="store_true", help="Delete the existing vector store before ingesting")
     args = parser.parse_args()
 
-    if not os.environ.get("OPENAI_API_KEY"):
-        print("Error: OPENAI_API_KEY not set. Copy .env.example to .env and fill it in.", file=sys.stderr)
-        sys.exit(1)
-
     if args.clear and os.path.isdir(PERSIST_DIR):
         print(f"Clearing existing vector store at '{PERSIST_DIR}'...")
         shutil.rmtree(PERSIST_DIR)

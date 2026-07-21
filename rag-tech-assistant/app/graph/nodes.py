@@ -1,5 +1,5 @@
-# app/graph/nodes.py
-from langchain_openai import ChatOpenAI
+
+from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 from pydantic import BaseModel, Field
@@ -7,7 +7,12 @@ from pydantic import BaseModel, Field
 from app.graph.state import GraphState
 from app.ingestion.embed_store import get_vectorstore
 
-llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+# Full-size model for generation, where answer quality matters most.
+llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0)
+
+# Smaller/faster model for the cheaper, higher-volume steps (query analysis,
+# grading, query rewriting) to conserve Groq's free-tier rate limit.
+small_llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0)
 
 TOP_K = 4
 
@@ -31,7 +36,7 @@ query_analysis_prompt = ChatPromptTemplate.from_messages([
     ("human", "{question}"),
 ])
 
-query_analysis_chain = query_analysis_prompt | llm.with_structured_output(QueryAnalysis)
+query_analysis_chain = query_analysis_prompt | small_llm.with_structured_output(QueryAnalysis)
 
 
 def query_analysis_node(state: GraphState) -> dict:
@@ -71,7 +76,7 @@ grading_prompt = ChatPromptTemplate.from_messages([
     ("human", "Question: {question}\n\n<context>\n{chunk}\n</context>"),
 ])
 
-grading_chain = grading_prompt | llm.with_structured_output(GradeResult)
+grading_chain = grading_prompt | small_llm.with_structured_output(GradeResult)
 
 
 def grade_documents_node(state: GraphState) -> dict:
@@ -99,7 +104,7 @@ transform_prompt = ChatPromptTemplate.from_messages([
     ("human", "Original question: {question}\nPrevious query attempt: {query}"),
 ])
 
-transform_chain = transform_prompt | llm | StrOutputParser()
+transform_chain = transform_prompt | small_llm | StrOutputParser()
 
 
 def transform_query_node(state: GraphState) -> dict:
