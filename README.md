@@ -49,29 +49,34 @@ Full reasoning behind the state design and node choices is in
 
 ## 3. Project Structure
 
-'''
-rag-tech-assistant/
-├── app/
-│   ├── main.py                 # FastAPI app + routes
-│   ├── graph/
-│   │   ├── state.py            # GraphState TypedDict
-│   │   ├── nodes.py            # all 6 node functions + prompts
-│   │   ├── build_graph.py      # StateGraph wiring + conditional edge
-│   ├── ingestion/
-│   │   ├── loader.py           # file/URL loading for API endpoints
-│   │   ├── chunker.py          # token-based splitting strategy
-│   │   ├── embed_store.py      # Chroma embedding + storage
-│   ├── models/
-│   │   └── schemas.py          # Pydantic request/response models
-├── data/
-│   └── corpus/                 # local docs (quickstart, troubleshooting, api_reference)
-├── tests/                      # pytest suite - see Section 10
-├── vectorstore/                # persisted Chroma index (created on ingest)
-├── ingest.py                   # standalone CLI ingestion script
-├── requirements.txt
-├── .env.example
-└── feedback_log.jsonl          # created at runtime by POST /feedback
-'''
+```mermaid
+flowchart TD
+    Root[rag-tech-assistant/] --> App[app/]
+    Root --> Data[data/]
+    Root --> Tests[tests/<br/><i>pytest suite - Section 10</i>]
+    Root --> VectorStore[vectorstore/<br/><i>persisted Chroma index, created on ingest</i>]
+    Root --> Ingest[ingest.py<br/><i>standalone CLI ingestion script</i>]
+    Root --> Reqs[requirements.txt]
+    Root --> EnvExample[.env.example]
+    Root --> Feedback[feedback_log.jsonl<br/><i>created at runtime by POST /feedback</i>]
+
+    App --> Main[main.py<br/><i>FastAPI app + routes</i>]
+    App --> Graph[graph/]
+    App --> Ingestion[ingestion/]
+    App --> Models[models/]
+
+    Graph --> State[state.py<br/><i>GraphState TypedDict</i>]
+    Graph --> Nodes[nodes.py<br/><i>all 6 node functions + prompts</i>]
+    Graph --> BuildGraph[build_graph.py<br/><i>StateGraph wiring + conditional edge</i>]
+
+    Ingestion --> Loader[loader.py<br/><i>file/URL loading for API endpoints</i>]
+    Ingestion --> Chunker[chunker.py<br/><i>token-based splitting strategy</i>]
+    Ingestion --> EmbedStore[embed_store.py<br/><i>Chroma embedding + storage</i>]
+
+    Models --> Schemas[schemas.py<br/><i>Pydantic request/response models</i>]
+
+    Data --> Corpus[corpus/<br/><i>quickstart, troubleshooting, api_reference</i>]
+```
 
 ## 4. Setup
 
