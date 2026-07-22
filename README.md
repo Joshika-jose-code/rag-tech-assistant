@@ -382,9 +382,7 @@ FastAPI's own required-field validation already returns 422 if 'files' is
 missing, and there's no way to send "an empty list of files" over real
 multipart HTTP the way a JSON body can send '"urls": []'.
 
-**Feedback storage is a flat '.jsonl' file**, not a database. Sufficient for
-a 2-day assignment; a SQLite table would be the natural upgrade if this went
-further.
+**Feedback storage is a flat '.jsonl' file**, not a database. A SQLite table would be the upgrade if this went further.
 
 **'transform_query_node's prompt explicitly constrains output format** to a
 single search string with no preamble, alternatives, or markdown. Without
@@ -426,7 +424,7 @@ through.
 
 **'hallucination_retry_count' increments inside 'generate_node', not
 'hallucination_check_node'.** This mirrors 'transform_query_node' being the
-single place 'retry_count' increments (see above): the node that actually
+single place 'retry_count' increments: the node that actually
 performs the retry action owns advancing the budget, rather than splitting
 "decide to retry" and "count the retry" across two different functions
 where the increment is easy to lose track of or double up.
