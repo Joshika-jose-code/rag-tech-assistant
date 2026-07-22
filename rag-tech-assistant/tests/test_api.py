@@ -14,6 +14,8 @@ def _fake_invoke_success(initial_state):
         "sources": [{"source": "quickstart.md", "snippet": "X is...", "score": None}],
         "is_fallback": False,
         "retry_count": 0,
+        "grounded": True,
+        "hallucination_retry_count": 0,
     }
 
 
@@ -23,6 +25,8 @@ def _fake_invoke_fallback(initial_state):
         "sources": [],
         "is_fallback": True,
         "retry_count": 2,
+        "grounded": None,
+        "hallucination_retry_count": 0,
     }
 
 
@@ -38,6 +42,8 @@ class TestQueryEndpoint:
         assert body["is_fallback"] is False
         assert body["retries_used"] == 0
         assert len(body["sources"]) == 1
+        assert body["grounded"] is True
+        assert body["hallucination_retries_used"] == 0
 
     def test_query_fallback_response_shape(self, monkeypatch):
         monkeypatch.setattr(main_module.compiled_graph, "invoke", _fake_invoke_fallback)
@@ -49,6 +55,8 @@ class TestQueryEndpoint:
         assert body["is_fallback"] is True
         assert body["retries_used"] == 2
         assert body["sources"] == []
+        assert body["grounded"] is None
+        assert body["hallucination_retries_used"] == 0
 
     def test_query_rejects_empty_question(self):
         resp = client.post("/query", json={"question": ""})

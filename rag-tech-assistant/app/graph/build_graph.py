@@ -8,6 +8,7 @@ from app.graph.nodes import (
     grade_documents_node,
     transform_query_node,
     generate_node,
+    hallucination_check_node,
     generate_fallback_node,
 )
 
@@ -21,6 +22,17 @@ def decide_next_step(state: GraphState) -> str:
     return "generate_fallback"
 
 
+def decide_after_hallucination_check(state: GraphState) -> str:
+    """Conditional edge after the hallucination check: accept a grounded
+    answer, regenerate if it's ungrounded and retry budget remains, or fall
+    through to the canned fallback once that budget is exhausted."""
+    if state["grounded"]:
+        return "accept"
+    if state["hallucination_retry_count"] < state["max_hallucination_retries"]:
+        return "generate"
+    return "generate_fallback"
+
+
 def build_graph():
     workflow = StateGraph(GraphState)
 
@@ -29,6 +41,7 @@ def build_graph():
     workflow.add_node("grade_documents", grade_documents_node)
     workflow.add_node("transform_query", transform_query_node)
     workflow.add_node("generate", generate_node)
+    workflow.add_node("hallucination_check", hallucination_check_node)
     workflow.add_node("generate_fallback", generate_fallback_node)
 
     workflow.set_entry_point("query_analysis")
@@ -47,7 +60,18 @@ def build_graph():
     )
 
     workflow.add_edge("transform_query", "retrieve")
-    workflow.add_edge("generate", END)
+    workflow.add_edge("generate", "hallucination_check")
+
+    workflow.add_conditional_edges(
+        "hallucination_check",
+        decide_after_hallucination_check,
+        {
+            "accept": END,
+            "generate": "generate",
+            "generate_fallback": "generate_fallback",
+        },
+    )
+
     workflow.add_edge("generate_fallback", END)
 
     return workflow.compile()
@@ -68,8 +92,13 @@ if __name__ == "__main__":
         "generation": None,
         "sources": [],
         "is_fallback": False,
+        "grounded": None,
+        "hallucination_retry_count": 0,
+        "max_hallucination_retries": 2,
     }
     result = compiled_graph.invoke(initial_state)
     print("Answer:", result["generation"])
     print("Retries used:", result["retry_count"])
     print("Fallback triggered:", result["is_fallback"])
+    print("Grounded:", result["grounded"])
+    print("Hallucination retries used:", result["hallucination_retry_count"])

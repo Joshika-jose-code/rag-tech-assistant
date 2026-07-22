@@ -17,6 +17,8 @@ class QueryResponse(BaseModel):
     sources: List[SourceChunk]
     is_fallback: bool
     retries_used: int
+    grounded: Optional[bool] = None
+    hallucination_retries_used: int
 
 
 class IngestURLRequest(BaseModel):

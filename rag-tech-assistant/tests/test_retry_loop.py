@@ -28,6 +28,9 @@ def _base_state(max_retries=2):
         "generation": None,
         "sources": [],
         "is_fallback": False,
+        "grounded": None,
+        "hallucination_retry_count": 0,
+        "max_hallucination_retries": 2,
     }
 
 
@@ -79,14 +82,23 @@ def fake_generate_fallback(state):
     }
 
 
+def fake_hallucination_check_grounded(state):
+    """Always accepts the answer on the first pass — keeps these tests
+    focused on the retrieval retry loop, not the hallucination-check loop
+    (see test_hallucination_loop.py for that)."""
+    return {"grounded": True}
+
+
 def _patch_nodes(monkeypatch, *, retrieve=fake_retrieve, grade=fake_grade_always_irrelevant,
                   transform=fake_transform_query, generate=fake_generate,
+                  hallucination_check=fake_hallucination_check_grounded,
                   fallback=fake_generate_fallback):
     monkeypatch.setattr(bg, "query_analysis_node", fake_query_analysis)
     monkeypatch.setattr(bg, "retrieve_node", retrieve)
     monkeypatch.setattr(bg, "grade_documents_node", grade)
     monkeypatch.setattr(bg, "transform_query_node", transform)
     monkeypatch.setattr(bg, "generate_node", generate)
+    monkeypatch.setattr(bg, "hallucination_check_node", hallucination_check)
     monkeypatch.setattr(bg, "generate_fallback_node", fallback)
     return bg.build_graph()
 

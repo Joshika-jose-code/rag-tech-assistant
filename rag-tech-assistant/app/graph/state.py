@@ -14,3 +14,6 @@ class GraphState(TypedDict):
     generation: Optional[str]
     sources: List[dict]
     is_fallback: bool
+    grounded: Optional[bool]        # set by hallucination_check_node; None until it has run
+    hallucination_retry_count: int  # incremented only in generate_node when regenerating
+    max_hallucination_retries: int  # regeneration budget, set by caller (main.py: DEFAULT_MAX_HALLUCINATION_RETRIES=2)

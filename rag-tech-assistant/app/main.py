@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="RAG Technical Documentation Assistant")
 
 DEFAULT_MAX_RETRIES = 2
+DEFAULT_MAX_HALLUCINATION_RETRIES = 2
 
 
 @app.post("/query", response_model=QueryResponse)
@@ -35,6 +36,9 @@ async def query(request: QueryRequest):
             "generation": None,
             "sources": [],
             "is_fallback": False,
+            "grounded": None,
+            "hallucination_retry_count": 0,
+            "max_hallucination_retries": DEFAULT_MAX_HALLUCINATION_RETRIES,
         }
         result = compiled_graph.invoke(initial_state)
         return QueryResponse(
@@ -42,6 +46,8 @@ async def query(request: QueryRequest):
             sources=result["sources"],
             is_fallback=result["is_fallback"],
             retries_used=result["retry_count"],
+            grounded=result["grounded"],
+            hallucination_retries_used=result["hallucination_retry_count"],
         )
     except Exception as e:
         logger.exception("Query failed")
