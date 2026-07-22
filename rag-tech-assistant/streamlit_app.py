@@ -18,7 +18,7 @@ import streamlit as st
 DEFAULT_BACKEND_URL = "http://localhost:8000"
 REQUEST_TIMEOUT = 120  # seconds; generation + grading + retries can be slow on Groq's free tier
 
-st.set_page_config(page_title="RAG Technical Documentation Assistant", page_icon="📚", layout="wide")
+st.set_page_config(page_title="RAG Technical Documentation Assistant", layout="wide")
 
 if "backend_url" not in st.session_state:
     st.session_state.backend_url = DEFAULT_BACKEND_URL
