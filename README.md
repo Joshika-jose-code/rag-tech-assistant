@@ -4,7 +4,7 @@ A Retrieval-Augmented Generation system that answers questions about a small
 corpus of FastAPI documentation, built with a self-corrective LangGraph
 workflow (query analysis -> retrieval -> document grading -> generation ->
 hallucination check, with a conditional retry loop and a web-search last
-resort) and served via FastAPI.
+resort), served via FastAPI, and fronted by a Streamlit chat UI.
 
 Built for the Express Analytics AI/ML Engineer Intern take-home assignment.
 
@@ -72,6 +72,7 @@ flowchart TD
     Root --> Tests[tests/<br/><i>pytest suite - Section 10</i>]
     Root --> VectorStore[vectorstore/<br/><i>persisted Chroma index, created on ingest</i>]
     Root --> Ingest[ingest.py<br/><i>standalone CLI ingestion script</i>]
+    Root --> StreamlitApp[streamlit_app.py<br/><i>chat UI - thin HTTP client of the API</i>]
     Root --> Reqs[requirements.txt]
     Root --> EnvExample[.env.example]
     Root --> Feedback[feedback_log.jsonl<br/><i>created at runtime by POST /feedback</i>]
@@ -140,6 +141,32 @@ uvicorn app.main:app --reload
 ```
 
 API docs available at <http://localhost:8000/docs>.
+
+### Run the UI
+
+'streamlit_app.py' is a thin client of the API above - it talks to it
+exclusively over HTTP (via 'requests'), so start the API first, then in a
+second terminal:
+
+```bash
+streamlit run streamlit_app.py
+```
+
+UI available at <http://localhost:8501>. Enter a different backend URL in
+the sidebar if the API isn't on 'localhost:8000'.
+
+The UI covers the full pipeline, not just querying:
+
+- **Chat**: ask a question and see the answer alongside status badges for
+  'is_fallback', 'grounded', 'used_web_search', and how many retrieval
+  retries / regenerations it took - the same transparency fields the API
+  returns, made visible instead of requiring a raw JSON read. Sources are
+  shown in a collapsible expander per answer.
+- **Feedback**: 👍/👎 per answer, wired to 'POST /feedback'.
+- **Document management** (sidebar): lists what's currently indexed
+  ('GET /documents'), and lets you add more via file upload or a list of
+  URLs ('POST /ingest/files' / 'POST /ingest/urls'), without needing 'curl'
+  or 'ingest.py'.
 
 ## 5. Example Requests
 
@@ -434,6 +461,21 @@ empty result set, which 'decide_after_web_search' routes straight to
 'generate_fallback' - so a misconfigured or absent Tavily key degrades
 gracefully to the pre-existing fallback behavior instead of 500ing the
 whole '/query' request.
+
+**The Streamlit UI is a separate process that talks to the API over HTTP,
+not a direct import of the graph.** 'streamlit_app.py' calls 'requests.post("/query")' etc. exactly like the 'curl' examples in Section 5, rather than
+importing 'compiled_graph' directly into the same process. This costs an
+extra process/port to run locally, but keeps the API as the single source
+of truth for request validation and response shape - the UI can't drift
+from what 'curl' or any other client sees, and the same backend could serve
+multiple UIs (or none) without change.
+
+**Chat history lives only in Streamlit's 'session_state', not the backend.**
+The API is single-turn/stateless by design (see Section 8's assumptions) -
+'GraphState' has no conversation memory, so there is nothing server-side to
+persist across turns yet. The UI's chat log is a client-side convenience
+for reviewing the current session, not a substitute for the "conversation
+memory" improvement listed in Section 9; a page refresh clears it.
 
 ### Errors Faced & Fixes
 

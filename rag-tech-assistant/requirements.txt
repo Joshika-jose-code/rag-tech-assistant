@@ -36,7 +36,7 @@ python-dotenv==1.0.1
 
 # --- Bonus features ---
 tavily-python==0.5.0            # web search fallback
-# streamlit==1.38.0             # simple UI
+streamlit==1.38.0               # UI
 
 # --- Testing ---
 pytest==8.3.3
