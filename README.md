@@ -115,9 +115,9 @@ bash
 git clone <https://github.com/Joshika-jose-code/rag-tech-assistant.git>
 cd rag-tech-assistant
 python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
+venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env            # then edit .env and add your GROQ_API_KEY
+copy .env.example .env    
 ```
 
 ### Ingest the corpus
