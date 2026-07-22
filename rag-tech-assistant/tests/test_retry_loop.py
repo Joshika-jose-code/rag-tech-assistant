@@ -89,14 +89,22 @@ def fake_hallucination_check_grounded(state):
     return {"grounded": True}
 
 
+def fake_web_search_no_results(state):
+    """No results found — keeps these tests focused on the retrieval retry
+    loop, not the web-search last resort (see test_web_search.py for that)."""
+    return {"graded_documents": [], "used_web_search": True}
+
+
 def _patch_nodes(monkeypatch, *, retrieve=fake_retrieve, grade=fake_grade_always_irrelevant,
                   transform=fake_transform_query, generate=fake_generate,
                   hallucination_check=fake_hallucination_check_grounded,
+                  web_search=fake_web_search_no_results,
                   fallback=fake_generate_fallback):
     monkeypatch.setattr(bg, "query_analysis_node", fake_query_analysis)
     monkeypatch.setattr(bg, "retrieve_node", retrieve)
     monkeypatch.setattr(bg, "grade_documents_node", grade)
     monkeypatch.setattr(bg, "transform_query_node", transform)
+    monkeypatch.setattr(bg, "web_search_node", web_search)
     monkeypatch.setattr(bg, "generate_node", generate)
     monkeypatch.setattr(bg, "hallucination_check_node", hallucination_check)
     monkeypatch.setattr(bg, "generate_fallback_node", fallback)
@@ -119,19 +127,19 @@ class TestDecideNextStep:
         state["retry_count"] = 0
         assert bg.decide_next_step(state) == "transform_query"
 
-    def test_routes_to_fallback_when_no_docs_and_retries_exhausted(self):
+    def test_routes_to_web_search_when_no_docs_and_retries_exhausted(self):
         state = _base_state(max_retries=2)
         state["graded_documents"] = []
         state["retry_count"] = 2
-        assert bg.decide_next_step(state) == "generate_fallback"
+        assert bg.decide_next_step(state) == "web_search"
 
-    def test_routes_to_fallback_when_retry_count_exceeds_max(self):
+    def test_routes_to_web_search_when_retry_count_exceeds_max(self):
         # defensive: should never happen given the loop structure, but the
         # routing function itself should still terminate safely if it does
         state = _base_state(max_retries=2)
         state["graded_documents"] = []
         state["retry_count"] = 5
-        assert bg.decide_next_step(state) == "generate_fallback"
+        assert bg.decide_next_step(state) == "web_search"
 
 
 # ---------------------------------------------------------------------------
@@ -141,7 +149,9 @@ class TestDecideNextStep:
 class TestRetryLoopTermination:
     def test_terminates_via_fallback_when_never_relevant(self, monkeypatch):
         """If every retrieval attempt is graded irrelevant, the graph must
-        stop after exactly max_retries loops and return the fallback."""
+        stop after exactly max_retries loops, try web search as a last
+        resort (see fake_web_search_no_results), and return the fallback
+        when that also finds nothing."""
         graph = _patch_nodes(monkeypatch, grade=fake_grade_always_irrelevant)
 
         result = graph.invoke(_base_state(max_retries=2))

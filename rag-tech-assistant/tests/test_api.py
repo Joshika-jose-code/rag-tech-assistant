@@ -16,6 +16,7 @@ def _fake_invoke_success(initial_state):
         "retry_count": 0,
         "grounded": True,
         "hallucination_retry_count": 0,
+        "used_web_search": False,
     }
 
 
@@ -27,6 +28,7 @@ def _fake_invoke_fallback(initial_state):
         "retry_count": 2,
         "grounded": None,
         "hallucination_retry_count": 0,
+        "used_web_search": True,
     }
 
 
@@ -44,6 +46,7 @@ class TestQueryEndpoint:
         assert len(body["sources"]) == 1
         assert body["grounded"] is True
         assert body["hallucination_retries_used"] == 0
+        assert body["used_web_search"] is False
 
     def test_query_fallback_response_shape(self, monkeypatch):
         monkeypatch.setattr(main_module.compiled_graph, "invoke", _fake_invoke_fallback)
@@ -57,6 +60,7 @@ class TestQueryEndpoint:
         assert body["sources"] == []
         assert body["grounded"] is None
         assert body["hallucination_retries_used"] == 0
+        assert body["used_web_search"] is True
 
     def test_query_rejects_empty_question(self):
         resp = client.post("/query", json={"question": ""})

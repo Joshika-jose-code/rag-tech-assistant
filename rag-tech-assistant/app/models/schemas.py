@@ -19,6 +19,7 @@ class QueryResponse(BaseModel):
     retries_used: int
     grounded: Optional[bool] = None
     hallucination_retries_used: int
+    used_web_search: bool
 
 
 class IngestURLRequest(BaseModel):

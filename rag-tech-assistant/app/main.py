@@ -39,6 +39,7 @@ async def query(request: QueryRequest):
             "grounded": None,
             "hallucination_retry_count": 0,
             "max_hallucination_retries": DEFAULT_MAX_HALLUCINATION_RETRIES,
+            "used_web_search": False,
         }
         result = compiled_graph.invoke(initial_state)
         return QueryResponse(
@@ -48,6 +49,7 @@ async def query(request: QueryRequest):
             retries_used=result["retry_count"],
             grounded=result["grounded"],
             hallucination_retries_used=result["hallucination_retry_count"],
+            used_web_search=result["used_web_search"],
         )
     except Exception as e:
         logger.exception("Query failed")

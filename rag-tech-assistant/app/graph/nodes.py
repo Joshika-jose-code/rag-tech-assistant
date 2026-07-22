@@ -4,7 +4,9 @@ import logging
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
+from langchain_core.documents import Document
 from pydantic import BaseModel, Field
+from tavily import TavilyClient
 
 from app.graph.state import GraphState
 from app.ingestion.embed_store import get_vectorstore
@@ -15,6 +17,7 @@ TOP_K = 4
 
 _llm = None
 _small_llm = None
+_tavily_client = None
 
 
 def get_llm() -> ChatGroq:
@@ -33,6 +36,13 @@ def get_small_llm() -> ChatGroq:
     if _small_llm is None:
         _small_llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0)
     return _small_llm
+
+
+def get_tavily_client() -> TavilyClient:
+    global _tavily_client
+    if _tavily_client is None:
+        _tavily_client = TavilyClient()  # reads TAVILY_API_KEY from env
+    return _tavily_client
 
 
 # ---------------------------------------------------------------------------
@@ -187,6 +197,50 @@ def transform_query_node(state: GraphState) -> dict:
     return {
         "query": new_query,
         "retry_count": state["retry_count"] + 1,  # the ONLY place this increments
+    }
+
+
+# ---------------------------------------------------------------------------
+# Fallback path: Web Search (last resort before the canned "I don't know")
+# ---------------------------------------------------------------------------
+
+def _web_docs_from_results(results: list[dict]) -> list[Document]:
+    docs = []
+    for r in results:
+        content = r.get("content")
+        if not content:
+            continue
+        docs.append(Document(
+            page_content=content,
+            metadata={"source": r.get("url", "unknown"), "title": r.get("title", "")},
+        ))
+    return docs
+
+
+def web_search_node(state: GraphState) -> dict:
+    # Reached only once the local corpus retry loop is exhausted (see
+    # decide_next_step). Results are handed straight to generate_node without
+    # a relevance-grading pass of their own — grading them would cost
+    # another round of LLM calls to re-answer a question Tavily's own search
+    # already targeted, and hallucination_check_node still verifies the
+    # eventual answer against whatever comes back here, so a bad or empty
+    # result can't produce an ungrounded response silently.
+    #
+    # Searches state["question"] (the original, never-mutated question), not
+    # state["query"]: the latter is tuned for the local vectorstore's
+    # similarity search and, after several transform_query_node rewrites
+    # ("try a different angle... do not repeat the previous query"), can
+    # drift far from the original question or degenerate into something
+    # near-meaningless. A general web search engine wants the real question.
+    try:
+        response = get_tavily_client().search(state["question"], max_results=TOP_K)
+        docs = _web_docs_from_results(response.get("results", []))
+    except Exception:
+        logger.warning("Web search failed; falling through to the canned fallback.", exc_info=True)
+        docs = []
+    return {
+        "graded_documents": docs,
+        "used_web_search": True,
     }
 
 

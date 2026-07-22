@@ -17,3 +17,4 @@ class GraphState(TypedDict):
     grounded: Optional[bool]        # set by hallucination_check_node; None until it has run
     hallucination_retry_count: int  # incremented only in generate_node when regenerating
     max_hallucination_retries: int  # regeneration budget, set by caller (main.py: DEFAULT_MAX_HALLUCINATION_RETRIES=2)
+    used_web_search: bool           # True if web_search_node supplied the context for generation

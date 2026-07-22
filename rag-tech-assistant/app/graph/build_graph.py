@@ -7,6 +7,7 @@ from app.graph.nodes import (
     retrieve_node,
     grade_documents_node,
     transform_query_node,
+    web_search_node,
     generate_node,
     hallucination_check_node,
     generate_fallback_node,
@@ -19,6 +20,15 @@ def decide_next_step(state: GraphState) -> str:
         return "generate"
     if state["retry_count"] < state["max_retries"]:
         return "transform_query"
+    return "web_search"
+
+
+def decide_after_web_search(state: GraphState) -> str:
+    """Conditional edge after the web-search last resort: generate from
+    whatever Tavily returned, or fall through to the canned fallback if the
+    search errored or came back empty."""
+    if state["graded_documents"]:
+        return "generate"
     return "generate_fallback"
 
 
@@ -40,6 +50,7 @@ def build_graph():
     workflow.add_node("retrieve", retrieve_node)
     workflow.add_node("grade_documents", grade_documents_node)
     workflow.add_node("transform_query", transform_query_node)
+    workflow.add_node("web_search", web_search_node)
     workflow.add_node("generate", generate_node)
     workflow.add_node("hallucination_check", hallucination_check_node)
     workflow.add_node("generate_fallback", generate_fallback_node)
@@ -55,11 +66,21 @@ def build_graph():
         {
             "generate": "generate",
             "transform_query": "transform_query",
-            "generate_fallback": "generate_fallback",
+            "web_search": "web_search",
         },
     )
 
     workflow.add_edge("transform_query", "retrieve")
+
+    workflow.add_conditional_edges(
+        "web_search",
+        decide_after_web_search,
+        {
+            "generate": "generate",
+            "generate_fallback": "generate_fallback",
+        },
+    )
+
     workflow.add_edge("generate", "hallucination_check")
 
     workflow.add_conditional_edges(
@@ -95,10 +116,12 @@ if __name__ == "__main__":
         "grounded": None,
         "hallucination_retry_count": 0,
         "max_hallucination_retries": 2,
+        "used_web_search": False,
     }
     result = compiled_graph.invoke(initial_state)
     print("Answer:", result["generation"])
     print("Retries used:", result["retry_count"])
     print("Fallback triggered:", result["is_fallback"])
+    print("Used web search:", result["used_web_search"])
     print("Grounded:", result["grounded"])
     print("Hallucination retries used:", result["hallucination_retry_count"])
