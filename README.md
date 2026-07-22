@@ -2,8 +2,9 @@
 
 A Retrieval-Augmented Generation system that answers questions about a small
 corpus of FastAPI documentation, built with a self-corrective LangGraph
-workflow (query analysis -> retrieval -> document grading -> generation, with a
-conditional retry loop) and served via FastAPI.
+workflow (query analysis -> retrieval -> document grading -> generation ->
+hallucination check, with a conditional retry loop and a web-search last
+resort) and served via FastAPI.
 
 Built for the Express Analytics AI/ML Engineer Intern take-home assignment.
 
@@ -17,9 +18,14 @@ The system ingests a mixed corpus of local Markdown files and fetched official d
 2. Retrieves the top-k most similar chunks
 3. Grades each chunk for actual relevance with an LLM (the self-corrective step), irrelevant chunks are filtered out
 4. If nothing relevant survives grading, rewrites the query and retries
-   (bounded by a retry limit) before falling back to an honest 'I don't know' response
-5. Generates a final answer grounded only in the surviving relevant chunks,
-   with inline citations
+   (bounded by a retry limit); once that retry budget is exhausted, tries a
+   Tavily web search as a last resort before giving up
+5. Generates a final answer grounded only in the surviving relevant chunks
+   (local or web), with inline citations
+6. Verifies the generated answer is actually supported by that context
+   (a Self-RAG style hallucination check) before returning it - regenerating
+   (bounded) if not, or falling through to an honest 'I don't know' response
+   once that budget is also exhausted
 
 ## 2. Architecture
 
@@ -31,18 +37,28 @@ flowchart TD
     Grade --> Decide{decide_next_step}
     Decide -->|relevant docs found| Generate[generate]
     Decide -->|no match, retries left| Transform[transform_query]
-    Decide -->|no match, retries exhausted| Fallback[generate_fallback]
+    Decide -->|no match, retries exhausted| WebSearch[web_search<br/>Tavily last resort]
     Transform --> Retrieve
-    Generate --> End([END])
+    WebSearch --> DecideWeb{decide_after_web_search}
+    DecideWeb -->|results found| Generate
+    DecideWeb -->|still nothing| Fallback[generate_fallback]
+    Generate --> Hallucination[hallucination_check<br/>LLM verifies groundedness]
+    Hallucination --> DecideHall{decide_after_hallucination_check}
+    DecideHall -->|grounded| End([END])
+    DecideHall -->|ungrounded, retries left| Generate
+    DecideHall -->|ungrounded, retries exhausted| Fallback
     Fallback --> End
 ```
 
 **State schema** ('app/graph/state.py') tracks: the original question
 (never mutated) separately from the current query (mutated on retry),
 'retry_count' / 'max_retries' for loop control, 'documents' vs
-'graded_documents' (raw retrieval vs. post-grading), and 'is_fallback' so the
+'graded_documents' (raw retrieval vs. post-grading), 'is_fallback' so the
 API layer knows whether the answer came from real context or the fallback
-path.
+path, 'grounded' / 'hallucination_retry_count' / 'max_hallucination_retries'
+for the post-generation verification loop, and 'used_web_search' so the API
+layer can tell when an answer's context came from Tavily rather than the
+local corpus.
 
 Full reasoning behind the state design and node choices is in
 [Section 7](#7-design-decisions--tradeoffs).
@@ -66,8 +82,8 @@ flowchart TD
     App --> Models[models/]
 
     Graph --> State[state.py<br/><i>GraphState TypedDict</i>]
-    Graph --> Nodes[nodes.py<br/><i>all 6 node functions + prompts</i>]
-    Graph --> BuildGraph[build_graph.py<br/><i>StateGraph wiring + conditional edge</i>]
+    Graph --> Nodes[nodes.py<br/><i>all 8 node functions + prompts</i>]
+    Graph --> BuildGraph[build_graph.py<br/><i>StateGraph wiring + conditional edges</i>]
 
     Ingestion --> Loader[loader.py<br/><i>file/URL loading for API endpoints</i>]
     Ingestion --> Chunker[chunker.py<br/><i>token-based splitting strategy</i>]
@@ -86,7 +102,11 @@ flowchart TD
 - A Groq API key (used for chat completions: query analysis, grading,
   generation). Embeddings run locally via sentence-transformers, so no key
   is needed for those.
-- Optional: a Tavily API key if you wire up the web-search-fallback bonus.
+- A Tavily API key ('TAVILY_API_KEY') to enable the web-search fallback.
+  Without it, 'web_search_node' fails open (logs a warning, returns no
+  results) and the graph falls straight through to the canned "I don't know"
+  response once local retries are exhausted - the same behavior as before
+  this feature existed.
 
 ### Install
 
@@ -145,7 +165,10 @@ curl -X POST <http://localhost:8000/query> \
 ```
 
 (Captured verbatim from a real request against the local corpus alone.
-Note: It honestly flags that the exact 'Path()' syntax isn't spelled out in the retrieved context, rather than guessing at it.)
+Note: It honestly flags that the exact 'Path()' syntax isn't spelled out in the retrieved context, rather than guessing at it. Captured before the
+hallucination-check and web-search additions - the response shape has since
+grown 'grounded', 'hallucination_retries_used', and 'used_web_search'; see
+the web-search example below for those in context.)
 
 ### Query that should trigger the fallback path
 
@@ -165,7 +188,47 @@ curl -X POST <http://localhost:8000/query> \
 ```
 
 (The corpus deliberately doesn't cover WebSockets - this is a documented negative-case test; see Section 8. Also captured verbatim from a real
-request.)
+request, before the web-search fallback existed - today, exhausting local
+retries tries a Tavily search first and only reaches this canned response
+if that also comes up empty.)
+
+### Query that exhausts local retries and falls through to web search
+
+```bash
+curl -X POST <http://localhost:8000/query> \
+  -H "Content-Type: application/json" \
+  -d '{"question": "How do I connect a FastAPI app to a PostgreSQL database using SQLAlchemy'\''s async session?"}'
+```
+
+```json
+{
+  "answer": "The provided context does not contain information on how to connect a FastAPI app to a PostgreSQL database using SQLAlchemy's async session. The context appears to be related to the definition and usage of the word \"what\" in the English language, with sources from Merriam-Webster, YouTube, Wiktionary, and Cambridge Dictionary. \n\nTo answer the question, information about FastAPI, PostgreSQL, and SQLAlchemy's async session is missing from the context.",
+  "sources": [
+    { "source": "https://www.merriam-webster.com/dictionary/what", "snippet": "...", "score": null },
+    { "source": "https://www.youtube.com/watch?v=1kknnG7zhSE", "snippet": "...", "score": null },
+    { "source": "https://en.wiktionary.org/wiki/what", "snippet": "...", "score": null },
+    { "source": "https://dictionary.cambridge.org/us/dictionary/english/what", "snippet": "...", "score": null }
+  ],
+  "is_fallback": false,
+  "retries_used": 2,
+  "grounded": true,
+  "hallucination_retries_used": 0,
+  "used_web_search": true
+}
+```
+
+(Captured verbatim - included here deliberately because it's the exact
+response that exposed a real bug rather than a cherry-picked success case.
+'used_web_search: true' confirms 'web_search_node' fired after local
+retries were exhausted, but the Tavily results are dictionary definitions
+of "what," not FastAPI/PostgreSQL content. Root cause and fix are in
+Section 7's "Errors Faced & Fixes"; after the fix, the same question
+searches Tavily with the original question text instead of the mangled
+retry query, so it no longer degenerates like this. 'grounded: true' here
+correctly reflects that the answer honestly said the context didn't
+contain the information - the hallucination check isn't meant to judge
+whether *retrieval* found the right thing, only whether the *generated
+answer* stays faithful to whatever context it was given.)
 
 ### 'POST /ingest/urls'
 
@@ -316,6 +379,97 @@ try/except-and-exclude in 'grade_documents_node' remain as defense-in-depth
 against other transient failures (rate limits, connection errors), not as
 the primary fix.
 
+**Hallucination check runs after 'generate', not before it.** You can only
+grade whether a *generated answer's claims* are supported by context once
+that answer actually exists - there's no meaningful "pre-check" for
+hallucination the way there is for document relevance. It reuses the same
+full-model + 'json_mode' choice as document grading, for the same two
+reasons documented above: the 8B model is measurably worse at single-boolean
+judgment calls, and 'json_mode' avoids the same boolean-as-string failure
+mode Groq's 'function_calling' path can produce.
+
+**'hallucination_check_node' fails open on an unverifiable answer; 'grade_documents_node' fails closed on an unverifiable chunk.** These look
+inconsistent but the cost of being wrong differs: an ungradeable *chunk*
+still has up to 'TOP_K - 1' other candidates to fall back on, so excluding
+it is nearly free. An ungradeable *answer* is the only answer generated so
+far - discarding it (and spending a regeneration) over what's likely a
+transient API hiccup is worse for the user than showing the unverified
+answer. So grading failures exclude, but hallucination-check failures pass
+through.
+
+**'hallucination_retry_count' increments inside 'generate_node', not
+'hallucination_check_node'.** This mirrors 'transform_query_node' being the
+single place 'retry_count' increments (see above): the node that actually
+performs the retry action owns advancing the budget, rather than splitting
+"decide to retry" and "count the retry" across two different functions
+where the increment is easy to lose track of or double up.
+
+**Regeneration includes a corrective note in the prompt, rather than a
+blind retry.** The generation model runs at 'temperature=0', so simply
+re-invoking the same chain with the same inputs would very likely reproduce
+the same ungrounded answer and burn the entire retry budget for nothing.
+Appending a note ("your previous answer included unsupported claims,
+revise...") only when regenerating actually changes the input, giving the
+retry a real chance to fix the answer instead of repeating it.
+
+**Web search results skip a dedicated relevance-grading pass.** Grading
+them would cost another round of LLM calls to re-judge relevance for a
+question Tavily's own search already targeted, and 'hallucination_check_node'
+downstream still verifies the eventual answer against whatever came back -
+so a bad or irrelevant web result can't silently produce an ungrounded
+response; at worst it triggers a regeneration or the canned fallback,
+the same as any other cause of a failed grounding check.
+
+**Web search is a strict last resort behind the local retry loop, not a
+parallel or first-choice source.** 'decide_next_step' only routes to
+'web_search' once local retries are exhausted. This keeps the system biased
+toward the curated local corpus and only reaches for the open web once
+that's demonstrably insufficient - consistent with treating the indexed
+docs as the primary source of truth.
+
+**'web_search_node' fails closed to "no results" on any error**, rather
+than propagating the exception. A missing 'TAVILY_API_KEY', a network
+failure, or a malformed Tavily response are all caught and treated as an
+empty result set, which 'decide_after_web_search' routes straight to
+'generate_fallback' - so a misconfigured or absent Tavily key degrades
+gracefully to the pre-existing fallback behavior instead of 500ing the
+whole '/query' request.
+
+### Errors Faced & Fixes
+
+Two real issues surfaced from manually inspecting actual '/query' responses
+during this round of additions (not from a crash or a failing test) -
+included here because both would have shipped invisibly otherwise:
+
+1. **Misleading source snippets.** A response citing 'troubleshooting.md'
+   showed a 300-character snippet about an unrelated "no current event
+   loop" error for an answer that was actually about CORS. Root cause,
+   confirmed by reading the source Markdown directly: the splitter had
+   merged two short, adjacent '##' sections (event-loop troubleshooting and
+   CORS troubleshooting) into a single ~300-token chunk, and the truncated
+   preview happened to land entirely within the first section. The model
+   had used the whole chunk correctly - only the *displayed preview* was
+   misleading. **Fix**: 'sources[].snippet' now returns the full chunk
+   ('doc.page_content') instead of the first 300 characters; chunks are
+   already bounded to ~300 tokens by the splitter, so showing the whole
+   thing is cheap and can't mislead the same way.
+
+2. **Web search returning completely unrelated results.** The example in
+   Section 5 above - a question about connecting FastAPI to PostgreSQL via
+   SQLAlchemy's async session - triggered a Tavily search that returned
+   dictionary definitions of the word "what." Root cause: 'web_search_node'
+   searched Tavily using 'state["query"]', the field 'transform_query_node'
+   rewrites on every retry ("try a different angle... do not repeat the
+   previous query"); after two rounds of the small model's rewrites, it had
+   degenerated into something close to meaningless. **Fix**: 'web_search_node'
+   now searches 'state["question"]' - the original, never-mutated question -
+   instead, since a general web search engine wants the real question, not a
+   string tuned for local vector similarity search. Locked in with a
+   regression test ('test_searches_original_question_not_rewritten_query' in
+   'tests/test_web_search.py') that deliberately sets 'query' to something
+   different from 'question' and asserts the fake Tavily client receives the
+   question.
+
 ## 8. Assumptions
 
 - The corpus is small enough (3 local docs, 6 total with the example URLs)
@@ -331,15 +485,10 @@ the primary fix.
 
 ## 9. What I'd Improve With More Time
 
-- **Hallucination check** (Self-RAG style): a node after 'generate' that
-  verifies the answer is actually supported by the retrieved context before
-  returning it, looping back to regenerate or falling through to
-  'generate_fallback' if not.
-- **Web search fallback**: 'tavily-python' and 'TAVILY_API_KEY' are already
-  wired into 'requirements.txt'/'.env.example', but the graph doesn't use
-  them yet. If grading exhausts retries with nothing relevant, add a
-  'web_search' node that queries Tavily before generating, rather than going
-  straight to "I don't know."
+(A hallucination-check node and a Tavily web-search fallback were both
+originally listed here; both are now implemented - see Section 2's diagram
+and Section 7's tradeoffs and "Errors Faced & Fixes.")
+
 - **Conversation memory**: add 'chat_history' to 'GraphState' and feed it
   into 'query_analysis' so follow-up questions ("what about the other one?")
   can resolve pronouns/context from prior turns.
@@ -372,13 +521,26 @@ mocking for what it's actually verifying:
   (downloading the embedding model) as a side effect. That's now lazy,
   built only on first 'get_vectorstore()' call, and
   'test_vectorstore_is_not_built_at_import_time' asserts it stays that way.
-- **'tests/test_retry_loop.py'**: monkeypatches the six node functions at
+- **'tests/test_retry_loop.py'**: monkeypatches the eight node functions at
   the 'app.graph.build_graph' module level with fakes, so 'decide_next_step'
-  and the retry loop's termination behavior are tested against real
-  'StateGraph' execution without any real LLM calls.
+  and the local-corpus retry loop's termination behavior are tested against
+  real 'StateGraph' execution without any real LLM or Tavily calls.
+- **'tests/test_hallucination_loop.py'**: same fakes-plus-real-'StateGraph'
+  approach, focused on 'decide_after_hallucination_check' and the
+  regenerate-or-fallback loop after 'generate' - including a check that the
+  regeneration budget advances exactly once per loop iteration.
+- **'tests/test_web_search.py'**: covers 'web_search_node' directly against
+  a fake Tavily client (no real network calls) - result-to-'Document'
+  conversion, dropping empty-content results, and failing closed on both
+  search errors and client-construction errors - plus 'decide_after_web_search'
+  routing and a full-graph check that 'web_search_node' is never invoked
+  when local retrieval already succeeded. Also contains the regression test
+  for the 'state["question"]' vs. 'state["query"]' bug described in
+  Section 7.
 - **'tests/test_api.py'**: 'TestClient' with 'compiled_graph.invoke' itself
   mocked, so it verifies request validation and status-code semantics
-  (400/422/500) at the FastAPI layer without exercising the graph at all.
+  (400/422/500) at the FastAPI layer without exercising the graph at all;
+  its fake graph results now also cover the 'grounded' / 'hallucination_retries_used' / 'used_web_search' response fields.
 - **'tests/conftest.py'** is intentionally empty. Earlier it set a dummy
   'OPENAI_API_KEY' / later 'GROQ_API_KEY' so that importing 'app.graph.nodes'
   wouldn't fail - that module used to build its 'ChatGroq' clients at
@@ -395,5 +557,8 @@ the suite: every graph node was invoked standalone against the real Groq
 API and real vector store at least once (not just through mocks), and
 every API endpoint was hit with real 'curl' requests against a running
 server. That's how the grading-model reliability issue and the
-malformed-tool-call crash described in Sections 6-7 were actually found -
-neither would surface from mocked tests alone.
+malformed-tool-call crash described in Sections 6-7 were actually found,
+and the same practice - reading real '/query' responses, not just checking
+that they returned 200 - is how both issues in Section 7's "Errors Faced &
+Fixes" (the misleading source snippet and the web-search query-drift bug)
+were caught; neither would surface from mocked tests alone.
