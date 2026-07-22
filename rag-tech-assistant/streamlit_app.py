@@ -74,7 +74,7 @@ with st.sidebar:
         st.error("Backend unreachable - is `uvicorn app.main:app` running?")
 
     st.divider()
-    st.header("📄 Indexed Documents")
+    st.header("Indexed Documents")
     if st.button("Refresh"):
         st.rerun()
     try:
@@ -116,11 +116,9 @@ with st.sidebar:
                 st.error(f"Ingestion failed: {e}")
 
 
-# ---------------------------------------------------------------------------
 # Main area: chat
-# ---------------------------------------------------------------------------
 
-st.title("📚 RAG Technical Documentation Assistant")
+st.title("RAG Technical Documentation Assistant")
 st.caption("Ask a question about the indexed FastAPI documentation.")
 
 for i, msg in enumerate(st.session_state.messages):
